@@ -371,15 +371,40 @@ window.addEventListener('fbSDKReady', function(){
           .catch(function(e){ setSyncUI('err','寫入失敗'); alert('寫入失敗：'+e.message); });
         return;
       }
-      if(remote.db) db = remote.db;
-      if(remote.cats) CATS_LIST = remote.cats;
+      // ── 修正1：Firebase 回傳 Object 需轉成 Array ──
+      if(remote.db){
+        db = Array.isArray(remote.db) ? remote.db : Object.values(remote.db);
+      }
+      if(remote.cats){
+        CATS_LIST = Array.isArray(remote.cats) ? remote.cats : Object.values(remote.cats);
+      }
+      // ── 修正2：確保每筆資料 cat 欄位正確（相容舊 band 欄位）──
+      db.forEach(function(e){
+        if(!e.cat && e.band) e.cat = e.band;
+        if(!e.sections) e.sections = [];
+        e.sections.forEach(function(s){
+          if(!s.items) s.items = [];
+          s.items = Array.isArray(s.items) ? s.items : Object.values(s.items);
+          s.items.forEach(function(it){
+            if(it.lat===undefined) it.lat=null;
+            if(it.lng===undefined) it.lng=null;
+            if(!it.tags) it.tags=[];
+            if(it.source===undefined) it.source='';
+            if(!it.images) it.images=[];
+            // images 也可能是 Object
+            if(it.images && !Array.isArray(it.images)) it.images=Object.values(it.images);
+          });
+        });
+        // sections 也可能是 Object
+        if(!Array.isArray(e.sections)) e.sections = Object.values(e.sections);
+      });
       setSyncUI('ok','已同步');
       document.getElementById('setup-banner').classList.remove('show');
       refresh();
       rebuildTagBar();
     }, function(err){
       setSyncUI('err','讀取失敗');
-      alert('Firebase 連線失敗：\n' + err.message + '\n\n請確認 Realtime Database 規則設為測試模式');
+      alert('Firebase 連線失敗：\n' + err.message);
     });
   } catch(e) {
     setSyncUI('err','初始化失敗');
