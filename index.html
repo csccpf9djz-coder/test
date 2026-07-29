@@ -348,6 +348,8 @@ select.fi option{background:var(--bg3)}
 
 <div class="toast" id="toast">已儲存 ✓</div>
 <input type="file" class="file-inp" id="fi" accept="image/*" multiple>
+<!-- 問題6：回頂部按鈕 -->
+<button id="scroll-top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="回到頂部" style="display:none;position:fixed;bottom:22px;right:18px;width:42px;height:42px;border-radius:50%;background:var(--ac);color:white;border:none;cursor:pointer;font-size:20px;box-shadow:0 2px 10px rgba(0,0,0,.2);z-index:900;align-items:center;justify-content:center;transition:opacity .2s">↑</button>
 
 <script>
 // ══════════════════════════════════════════════
@@ -589,6 +591,13 @@ function syncLockUI(){
   document.getElementById('lock-lbl').textContent=isEd?'編輯中':'閱覽';
   document.getElementById('ro-bar').classList.toggle('show',!isEd);
   document.getElementById('btn-add-e').style.display=isEd?'':'none';
+  // 問題3：同步徽章和設定提示只在編輯模式顯示
+  document.getElementById('sync-badge').style.display=isEd?'flex':'none';
+  var banner=document.getElementById('setup-banner');
+  if(banner){
+    if(!isEd){ banner.style.display='none'; }
+    else { banner.style.display=banner.classList.contains('show')?'block':'none'; }
+  }
 }
 function refresh(){if(curId)renderDetail();else renderList();}
 
@@ -630,14 +639,7 @@ function initDetailMap(e){
   var centre=CAT_LL[e.location]||[36,136];
   var c=getColor(e.cat);
   var dMks=[];
-  // Entry-level pin
-  if(CAT_LL[e.location]){
-    var mainIcon=L.divIcon({className:'',iconSize:[28,28],iconAnchor:[14,14],
-      html:'<div style="width:28px;height:28px;border-radius:50%;background:'+c+';border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:14px">📍</div>'});
-    var mm=L.marker(CAT_LL[e.location],{icon:mainIcon,zIndexOffset:1000}).addTo(detailMap);
-    mm.bindTooltip('<b>'+e.location+'</b>',{direction:'top',offset:[0,-16],permanent:false});
-    dMks.push(mm);
-  }
+  // ── 只顯示景點圖釘，不顯示城市大圖釘 ──
   e.sections.forEach(function(sec){
     sec.items.forEach(function(it){
       if(it.lat==null||it.lng==null)return;
@@ -719,7 +721,17 @@ function getAllTags(){
   return Object.keys(m).sort();
 }
 function rebuildTagBar(){
-  var tags=getAllTags();
+  // 問題5：只顯示當前頁面有的 tag
+  var tags=[];
+  if(curId){
+    // 詳情頁：只顯示這個條目的 tag
+    var e=fE(curId);
+    if(e) e.sections.forEach(function(s){s.items.forEach(function(it){(it.tags||[]).forEach(function(t){if(t&&tags.indexOf(t)<0)tags.push(t);});});});
+  } else {
+    // 列表頁：顯示當前分頁的 tag
+    vis().forEach(function(e){e.sections.forEach(function(s){s.items.forEach(function(it){(it.tags||[]).forEach(function(t){if(t&&tags.indexOf(t)<0)tags.push(t);});});});});
+  }
+  tags.sort();
   var bar=document.getElementById('tag-bar');
   if(!tags.length){bar.style.display='none';return;}
   bar.style.display='flex';
@@ -729,9 +741,15 @@ function rebuildTagBar(){
   document.getElementById('tag-clear').style.display=activeTag?'':'none';
 }
 function toggleTagFilter(t){
-  activeTag=activeTag===t?null:t;
-  rebuildTagBar();
-  if(curId)applyTagHighlight();else renderList();
+  if(curId){
+    // 問題5：在詳情頁點 tag → 跳到列表頁並篩選含該 tag 的條目
+    activeTag=(activeTag===t)?null:t;
+    backToList();
+  } else {
+    activeTag=activeTag===t?null:t;
+    rebuildTagBar();
+    renderList();
+  }
 }
 function clearTagFilter(){activeTag=null;rebuildTagBar();if(curId)applyTagHighlight();else renderList();}
 function applyTagHighlight(){
@@ -757,7 +775,23 @@ function switchTab(t){
 }
 
 // ── LIST ──
-function vis(){return curTab==='全部'?db.slice():db.filter(function(d){return d.cat===curTab;});}
+var CAT_LL_KEY='18trip_catll';
+// 從 localStorage 讀回之前搜尋到的座標
+try{var _ll=localStorage.getItem(CAT_LL_KEY);if(_ll){var _llp=JSON.parse(_ll);Object.keys(_llp).forEach(function(k){if(!CAT_LL[k])CAT_LL[k]=_llp[k];});}}catch(e){}
+function saveCAT_LL(){try{localStorage.setItem(CAT_LL_KEY,JSON.stringify(CAT_LL));}catch(e){}}
+
+function vis(){
+  var es=curTab==='全部'?db.slice():db.filter(function(d){return d.cat===curTab;});
+  // 問題5：若有 activeTag，只顯示含該 tag 的條目
+  if(activeTag){
+    es=es.filter(function(e){
+      return e.sections.some(function(s){
+        return s.items.some(function(it){return(it.tags||[]).indexOf(activeTag)>=0;});
+      });
+    });
+  }
+  return es;
+}
 function renderList(){
   var es=vis();
   document.getElementById('list-ttl').textContent=curTab==='全部'?'所有聖地（'+db.length+'筆）':curTab+'（'+es.length+'筆）';
@@ -941,11 +975,11 @@ function saveE(){
   function done(){save();closeOv('em');if(editId&&editId===curId)renderDetail();else backToList();editId=null;}
   if(editId){
     var entry=fE(editId);entry.cat=cat;entry.location=loc;entry.story=story;
-    if(!CAT_LL[loc]){nominatimSearch(loc,function(data){if(data&&data.length)CAT_LL[loc]=[parseFloat(data[0].lat),parseFloat(data[0].lon)];done();},done);}else done();
+    if(!CAT_LL[loc]){nominatimSearch(loc,function(data){if(data&&data.length){CAT_LL[loc]=[parseFloat(data[0].lat),parseFloat(data[0].lon)];saveCAT_LL();}done();},done);}else done();
   }else{
     var ne={id:uid(),cat:cat,location:loc,story:story,sections:[mkSec(uid(),'景點','景點'),mkSec(uid(),'美食','美食'),mkSec(uid(),'其他','其他')]};
     db.push(ne);
-    if(!CAT_LL[loc]){nominatimSearch(loc,function(data){if(data&&data.length)CAT_LL[loc]=[parseFloat(data[0].lat),parseFloat(data[0].lon)];done();},done);}else done();
+    if(!CAT_LL[loc]){nominatimSearch(loc,function(data){if(data&&data.length){CAT_LL[loc]=[parseFloat(data[0].lat),parseFloat(data[0].lon)];saveCAT_LL();}done();},done);}else done();
   }
 }
 function delE(id){if(!isEd||!confirm('確定刪除整個條目？'))return;db=db.filter(function(d){return d.id!==id;});save();renderList();}
@@ -967,13 +1001,17 @@ document.querySelectorAll('.ov').forEach(function(o){o.addEventListener('click',
 // ── INIT ──
 syncLockUI();
 initMainMap();
-// Firebase 由 fbSDKReady 事件觸發，這裡只處理本機備援
 if(!loadFirebaseConfig()){
   setSyncUI('','本機');
   document.getElementById('setup-banner').classList.add('show');
   localSave();
 }
 renderList();
+// 回頂部按鈕
+window.addEventListener('scroll',function(){
+  var btn=document.getElementById('scroll-top-btn');
+  if(window.scrollY>200){btn.style.display='flex';}else{btn.style.display='none';}
+});
 </script>
 </body>
 </html>
