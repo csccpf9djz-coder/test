@@ -741,13 +741,12 @@ function rebuildTagBar(){
   document.getElementById('tag-clear').style.display=activeTag?'':'none';
 }
 function toggleTagFilter(t){
+  activeTag=activeTag===t?null:t;
+  rebuildTagBar();
   if(curId){
-    // 問題5：在詳情頁點 tag → 跳到列表頁並篩選含該 tag 的條目
-    activeTag=(activeTag===t)?null:t;
-    backToList();
+    // 詳情頁點 tag：直接在本頁亮起含該 tag 的景點
+    applyTagHighlight();
   } else {
-    activeTag=activeTag===t?null:t;
-    rebuildTagBar();
     renderList();
   }
 }
@@ -811,15 +810,19 @@ function renderList(){
 // ── DETAIL ──
 var curId=null,curCat='全部',pendImg=null;
 function openDetail(id){
-  curId=id;curCat='全部';activeTag=null;
+  curId=id;curCat='全部';
+  // activeTag 保留，進入詳情頁後自動亮起含該 tag 的景點
   document.getElementById('list-pg').style.display='none';
   document.getElementById('map-wrap').style.display='none';
   document.getElementById('dp').classList.add('show');
   renderDetail();
+  // 若有 activeTag，進頁面後自動套用亮起
+  if(activeTag) setTimeout(function(){ applyTagHighlight(); rebuildTagBar(); },50);
 }
 function backToList(){
   if(detailMap){detailMap.remove();detailMap=null;}
-  curId=null;activeTag=null;
+  curId=null;
+  // activeTag 保留，回到列表頁繼續篩選
   if(curTab==='HAMA')curTab='全部';
   document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.toggle('on',b.dataset.t===curTab);});
   document.getElementById('dp').classList.remove('show');
@@ -848,7 +851,7 @@ function renderDetail(){
     '<div class="ctabs">'+tabsH+'</div>'+secsH;
   rebuildTagBar();
   initDetailMap(e);
-  if(activeTag)applyTagHighlight();
+  if(activeTag) setTimeout(function(){ applyTagHighlight(); },30);
 }
 
 function spotHTML(it,sid){
