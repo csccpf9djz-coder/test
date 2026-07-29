@@ -359,9 +359,32 @@ var _fbReady = false;
 
 window.addEventListener('fbSDKReady', function(){
   _fbReady = true;
-  var cfg = loadFirebaseConfig();
-  if(cfg && cfg.apiKey && cfg.databaseURL) initFirebase(cfg);
-  else { setSyncUI('','本機'); document.getElementById('setup-banner').classList.add('show'); }
+  try {
+    setSyncUI('loading','連線中…');
+    var SDK = window._fbSDK;
+    fbRef = SDK.ref(SDK.db, '18trip_data');
+    SDK.onValue(fbRef, function(snap){
+      var remote = snap.val();
+      if(!remote){
+        SDK.set(fbRef, {db: db, cats: CATS_LIST})
+          .then(function(){ setSyncUI('ok','已同步'); document.getElementById('setup-banner').classList.remove('show'); })
+          .catch(function(e){ setSyncUI('err','寫入失敗'); alert('寫入失敗：'+e.message); });
+        return;
+      }
+      if(remote.db) db = remote.db;
+      if(remote.cats) CATS_LIST = remote.cats;
+      setSyncUI('ok','已同步');
+      document.getElementById('setup-banner').classList.remove('show');
+      refresh();
+      rebuildTagBar();
+    }, function(err){
+      setSyncUI('err','讀取失敗');
+      alert('Firebase 連線失敗：\n' + err.message + '\n\n請確認 Realtime Database 規則設為測試模式');
+    });
+  } catch(e) {
+    setSyncUI('err','初始化失敗');
+    alert('Firebase 初始化錯誤：\n' + e.message);
+  }
 });
 
 function loadFirebaseConfig(){
