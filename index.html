@@ -490,7 +490,6 @@ function fbSave(){
   // 版本控制：先讀 Firebase 版本
   SDK.ref(SDK.db,'18trip_data/version').then
     ? null : null; // onValue 不支援 promise，改用一次性讀取
-  var {get} = window._fbSDKGet || {};
   var payload={db:db,cats:CATS_LIST,version:_localVersion,updatedAt:new Date().toISOString()};
   SDK.set(fbRef, payload)
     .then(function(){
@@ -842,13 +841,13 @@ function openDetail(id){
   document.getElementById('map-wrap').style.display='none';
   document.getElementById('dp').classList.add('show');
   renderDetail();
-  // 若有 activeTag，進頁面後自動套用亮起
-  if(activeTag) setTimeout(function(){ applyTagHighlight(); rebuildTagBar(); },50);
+  // 若有 activeTags，進頁面後自動套用亮起
+  if(activeTags.length) setTimeout(function(){ applyTagHighlight(); rebuildTagBar(); },50);
 }
 function backToList(){
   if(detailMap){detailMap.remove();detailMap=null;}
   curId=null;
-  // activeTag 保留，回到列表頁繼續篩選
+  // activeTags 保留，回到列表頁繼續篩選
   if(curTab==='HAMA')curTab='全部';
   document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.toggle('on',b.dataset.t===curTab);});
   document.getElementById('dp').classList.remove('show');
@@ -877,7 +876,7 @@ function renderDetail(){
     '<div class="ctabs">'+tabsH+'</div>'+secsH;
   rebuildTagBar();
   initDetailMap(e);
-  if(activeTag) setTimeout(function(){ applyTagHighlight(); },30);
+  if(activeTags.length) setTimeout(function(){ applyTagHighlight(); },30);
 }
 
 function spotHTML(it,sid){
