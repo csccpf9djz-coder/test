@@ -11,7 +11,6 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import { getDatabase, ref, set, onValue } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js';
-import { getStorage, ref as sRef, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-storage.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCYiSuyYR-N9BJ5scgFXuz2U-5Mjf6Qy18",
@@ -26,8 +25,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db_instance = getDatabase(app);
 
-const storage_instance = getStorage(app);
-window._fbSDK = { ref, set, onValue, db: db_instance, sRef, uploadBytes, getDownloadURL, deleteObject, storage: storage_instance };
+window._fbSDK = { ref, set, onValue, db: db_instance };
 window.dispatchEvent(new Event('fbSDKReady'));
 </script>
 <style>
@@ -145,14 +143,15 @@ a:hover{text-decoration:underline}
 .sc-acts{display:flex;gap:4px;flex-shrink:0}
 .sc-maybe-btn{font-size:11px;padding:3px 7px;border-radius:9px;border:0.5px solid var(--line2);background:transparent;color:var(--tx3);cursor:pointer;transition:all .15s;white-space:nowrap}
 .sc-maybe-btn.on{background:rgba(160,132,92,.1);color:#806440;border-color:rgba(160,132,92,.3)}
-.sc-imgs{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:0 12px 10px}
-.sc-img-wrap{position:relative;border-radius:8px;overflow:hidden}
-.sc-img{width:100%;aspect-ratio:3/2;object-fit:cover;display:block;cursor:pointer}
-.sc-img-del{position:absolute;top:5px;right:5px;background:rgba(0,0,0,.55);color:white;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s}
+.sc-imgs{display:flex;flex-direction:column;gap:8px;padding:0 12px 10px}
+.sc-img-wrap{position:relative;border-radius:8px;overflow:hidden;background:var(--bg3)}
+.sc-img{width:100%;max-height:480px;object-fit:contain;display:block;cursor:pointer;border-radius:8px;background:var(--bg3)}
+.sc-img-del{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);color:white;border:none;border-radius:50%;width:26px;height:26px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s}
 .sc-img-wrap:hover .sc-img-del{opacity:1}
-.sc-img-add{aspect-ratio:3/2;background:var(--bg3);border:0.5px dashed var(--line2);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer}
-.sc-img-add-icon{font-size:20px;opacity:.3}
-.sc-img-add-lbl{font-size:10px;color:var(--tx3)}
+.sc-img-add{padding:14px;background:var(--bg3);border:0.5px dashed var(--line2);border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-size:12px;color:var(--tx3);transition:background .15s}
+.sc-img-add:hover{background:var(--bg2);color:var(--ac);border-color:var(--ac)}
+.sc-img-add-icon{font-size:18px;opacity:.5}
+.sc-img-add-lbl{font-size:12px}
 .sc-meta{padding:0 14px 12px;display:flex;flex-direction:column;gap:7px}
 .map-combo{display:flex;flex-direction:column;gap:4px;position:relative}
 .map-combo-inp{width:100%;background:var(--bg3);border:0.5px solid var(--line);border-radius:7px;padding:7px 10px;font-size:12px;color:var(--tx)}
@@ -214,6 +213,7 @@ select.fi option{background:var(--bg3)}
 .cat-item button{background:none;border:none;color:var(--tx3);cursor:pointer;font-size:13px;padding:0}
 .cat-item button:hover{color:var(--red)}
 .img-big{max-width:100%;max-height:75vh;border-radius:8px;display:block;margin:0 auto}
+#iv-img-full{max-width:95vw;max-height:92vh;object-fit:contain;border-radius:8px;display:block;user-select:none;transition:transform .2s}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--tx);color:var(--bg2);font-size:12px;padding:6px 16px;border-radius:18px;opacity:0;transition:all .25s;z-index:999;pointer-events:none}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .file-inp{display:none}
@@ -348,7 +348,6 @@ select.fi option{background:var(--bg3)}
 </div>
 
 <div class="toast" id="toast">已儲存 ✓</div>
-<input type="file" class="file-inp" id="fi" accept="image/*" multiple>
 <!-- 問題6：回頂部按鈕 -->
 <button id="scroll-top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="回到頂部" style="display:none;position:fixed;bottom:22px;right:18px;width:42px;height:42px;border-radius:50%;background:var(--ac);color:white;border:none;cursor:pointer;font-size:20px;box-shadow:0 2px 10px rgba(0,0,0,.2);z-index:900;align-items:center;justify-content:center;transition:opacity .2s">↑</button>
 
@@ -954,63 +953,23 @@ function delSpot(sid,iid){
   if(s){s.items=s.items.filter(function(x){return x.id!==iid;});save();renderDetail();}
 }
 
-// ── IMAGES (Firebase Storage) ──
-function trigImg(iid){if(!isEd)return;pendImg=iid;var fi=document.getElementById('fi');fi.value='';fi.click();}
-document.getElementById('fi').addEventListener('change',function(){
-  var files=Array.from(this.files);if(!files.length||!pendImg||!curId)return;
-  var savedIid=pendImg;var e=fE(curId);if(!e)return;
-  var SDK=window._fbSDK;
-  var remaining=files.length;
-  files.forEach(function(f){
-    if(f.size>8*1024*1024){alert(f.name+' 超過 8MB，請壓縮後再上傳');remaining--;if(remaining<=0){save();renderDetail();}return;}
-    if(SDK&&SDK.storage){
-      // 上傳到 Firebase Storage
-      var path='images/'+Date.now()+'_'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-      var storageRef=SDK.sRef(SDK.storage,path);
-      showToast('上傳中…');
-      SDK.uploadBytes(storageRef,f).then(function(snapshot){
-        return SDK.getDownloadURL(snapshot.ref);
-      }).then(function(url){
-        var found=false;
-        for(var i=0;i<e.sections.length&&!found;i++)for(var j=0;j<e.sections[i].items.length&&!found;j++)
-          if(e.sections[i].items[j].id===savedIid){e.sections[i].items[j].images.push(url);found=true;}
-        remaining--;if(remaining<=0){save();renderDetail();}
-      }).catch(function(err){
-        alert('上傳失敗：'+err.message);
-        remaining--;if(remaining<=0){save();renderDetail();}
-      });
-    } else {
-      // fallback: base64
-      var r=new FileReader();
-      r.onload=function(ev){
-        var found=false;
-        for(var i=0;i<e.sections.length&&!found;i++)for(var j=0;j<e.sections[i].items.length&&!found;j++)
-          if(e.sections[i].items[j].id===savedIid){e.sections[i].items[j].images.push(ev.target.result);found=true;}
-        remaining--;if(remaining<=0){save();renderDetail();}
-      };
-      r.readAsDataURL(f);
-    }
-  });this.value='';
-});
+// ── IMAGES（外部網址模式）──
+function trigImg(iid){
+  if(!isEd)return;
+  var url=(prompt('請輸入圖片網址（支援 imgur、Twitter、任意圖片連結）：')||'').trim();
+  if(!url||url.indexOf('http')<0){if(url)alert('請輸入完整的 http/https 網址');return;}
+  var e=fE(curId);if(!e)return;
+  var found=false;
+  for(var i=0;i<e.sections.length&&!found;i++)for(var j=0;j<e.sections[i].items.length&&!found;j++)
+    if(e.sections[i].items[j].id===iid){e.sections[i].items[j].images.push(url);found=true;}
+  if(found){save();renderDetail();}
+}
 function delImg(iid,idx){
   if(!isEd)return;
   var e=fE(curId),res=fI(e,iid);
   if(!res)return;
-  var url=res.it.images[idx];
   res.it.images.splice(idx,1);
   save();renderDetail();
-  // 若是 Storage URL 也從雲端刪除
-  var SDK=window._fbSDK;
-  if(url&&url.indexOf('firebasestorage')>=0&&SDK&&SDK.storage){
-    try{
-      // 從 URL 解析 path
-      var m=url.match(/o\/(images%2F[^?]+)/);
-      if(m){
-        var path=decodeURIComponent(m[1]);
-        SDK.deleteObject(SDK.sRef(SDK.storage,path)).catch(function(){});
-      }
-    }catch(ex){}
-  }
 }
 function viewImg(src){
   var el=document.getElementById('iv-fullscreen');
