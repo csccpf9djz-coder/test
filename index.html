@@ -11,6 +11,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
 import { getDatabase, ref, set, onValue } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js';
+import { getStorage, ref as sRef, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-storage.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCYiSuyYR-N9BJ5scgFXuz2U-5Mjf6Qy18",
@@ -25,7 +26,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db_instance = getDatabase(app);
 
-window._fbSDK = { ref, set, onValue, db: db_instance };
+const storage_instance = getStorage(app);
+window._fbSDK = { ref, set, onValue, db: db_instance, sRef, uploadBytes, getDownloadURL, deleteObject, storage: storage_instance };
 window.dispatchEvent(new Event('fbSDKReady'));
 </script>
 <style>
@@ -223,13 +225,20 @@ select.fi option{background:var(--bg3)}
 </head>
 <body>
 
+<!-- Loading 畫面 -->
+<div id="loading-screen" style="position:fixed;inset:0;background:var(--bg);z-index:9998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px">
+  <div style="font-family:'Shippori Mincho',serif;font-size:22px;font-weight:700;background:linear-gradient(135deg,#5c7a6e,#a0845c);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">18TRIP 聖地巡禮</div>
+  <div style="font-size:13px;color:var(--tx3)">正在同步資料…</div>
+  <div style="width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--ac);border-radius:50%;animation:spin .8s linear infinite"></div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 <!-- Firebase 設定提示 -->
 <div class="setup-banner" id="setup-banner">
   ⚠️ 尚未設定 Firebase — 目前為<b>本機模式</b>（僅儲存在此裝置）。
   <a href="#" onclick="openOv('fb-setup-modal');return false">點此設定多裝置同步 →</a>
 </div>
 
-<div class="ro-bar" id="ro-bar">👁 閱覽模式 — 右上角按鈕切換編輯</div>
+<div class="ro-bar" id="ro-bar" style="display:none!important"></div>
 
 <header class="hdr">
   <div class="hdr-inner">
@@ -252,22 +261,16 @@ select.fi option{background:var(--bg3)}
 
 <nav class="nav" id="nav">
   <button class="nav-btn on" data-t="全部" onclick="switchTab('全部')">全部</button>
+  <button class="nav-btn" data-t="HAMA" onclick="switchTab('HAMA')">HAMA</button>
   <button class="nav-btn" data-t="朝班" onclick="switchTab('朝班')">朝班</button>
   <button class="nav-btn" data-t="昼班" onclick="switchTab('昼班')">昼班</button>
   <button class="nav-btn" data-t="夕班" onclick="switchTab('夕班')">夕班</button>
   <button class="nav-btn" data-t="夜班" onclick="switchTab('夜班')">夜班</button>
   <button class="nav-btn" data-t="ペア" onclick="switchTab('ペア')">ペア</button>
-  <button class="nav-btn" data-t="HAMA" onclick="switchTab('HAMA')">HAMA</button>
 </nav>
 
 <div id="map-wrap">
   <div id="main-map"></div>
-  <div class="map-overlay">
-    <div class="map-search-row">
-      <input class="map-s-inp" id="map-s-inp" type="text" placeholder="輸入地名搜尋地圖" onkeydown="if(event.key==='Enter')doMapSearch()">
-      <button class="map-s-btn" onclick="doMapSearch()">搜尋</button>
-    </div>
-  </div>
 </div>
 
 <div class="tag-bar" id="tag-bar" style="display:none">
@@ -338,12 +341,10 @@ select.fi option{background:var(--bg3)}
     </div>
   </div>
 </div>
-<!-- Image viewer -->
-<div class="ov" id="iv">
-  <div class="modal" style="max-width:760px;padding:8px;background:#181410">
-    <button class="modal-x" onclick="closeOv('iv')" style="background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.15);color:#ccc">✕</button>
-    <img class="img-big" id="iv-img" src="" alt="">
-  </div>
+<!-- Image viewer - fullscreen -->
+<div id="iv-fullscreen" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:9999;align-items:center;justify-content:center;flex-direction:column">
+  <button onclick="closeImgFull()" style="position:absolute;top:14px;right:18px;background:rgba(255,255,255,.12);border:none;color:white;font-size:22px;width:38px;height:38px;border-radius:50%;cursor:pointer;z-index:10000">✕</button>
+  <img id="iv-img-full" src="" alt="" style="max-width:100vw;max-height:100vh;object-fit:contain;user-select:none">
 </div>
 
 <div class="toast" id="toast">已儲存 ✓</div>
@@ -373,6 +374,10 @@ window.addEventListener('fbSDKReady', function(){
           .catch(function(e){ setSyncUI('err','寫入失敗'); alert('寫入失敗：'+e.message); });
         return;
       }
+      // 版本控制：若 Firebase 比本地新，更新本地版本號
+      if(remote.version && remote.version > _localVersion){
+        _localVersion = remote.version;
+      }
       // ── 修正1：Firebase 回傳 Object 需轉成 Array ──
       if(remote.db){
         db = Array.isArray(remote.db) ? remote.db : Object.values(remote.db);
@@ -400,12 +405,14 @@ window.addEventListener('fbSDKReady', function(){
         // sections 也可能是 Object
         if(!Array.isArray(e.sections)) e.sections = Object.values(e.sections);
       });
-      setSyncUI('ok','已同步');
+      setSyncUI('ok','已同步 '+getTaipeiTime());
       document.getElementById('setup-banner').classList.remove('show');
+      hideLoading();
       refresh();
       rebuildTagBar();
     }, function(err){
       setSyncUI('err','讀取失敗');
+      hideLoading();
       alert('Firebase 連線失敗：\n' + err.message);
     });
   } catch(e) {
@@ -469,10 +476,29 @@ function initFirebase(cfg){
     alert('Firebase 初始化錯誤：\n' + e.message);
   }
 }
+function getTaipeiTime(){
+  return new Date().toLocaleTimeString('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit'});
+}
+function hideLoading(){
+  var el=document.getElementById('loading-screen');
+  if(el){el.style.opacity='0';el.style.transition='opacity .4s';setTimeout(function(){el.style.display='none';},400);}
+}
+var _localVersion=Date.now();
 function fbSave(){
   if(!fbRef || !window._fbSDK){ localSave(); showToast('已儲存（本機）'); return; }
-  window._fbSDK.set(fbRef, {db: db, cats: CATS_LIST})
-    .then(function(){ setSyncUI('ok','已同步'); showToast('已同步 ✓'); })
+  var SDK=window._fbSDK;
+  // 版本控制：先讀 Firebase 版本
+  SDK.ref(SDK.db,'18trip_data/version').then
+    ? null : null; // onValue 不支援 promise，改用一次性讀取
+  var {get} = window._fbSDKGet || {};
+  var payload={db:db,cats:CATS_LIST,version:_localVersion,updatedAt:new Date().toISOString()};
+  SDK.set(fbRef, payload)
+    .then(function(){
+      var t=getTaipeiTime();
+      setSyncUI('ok','已同步 '+t);
+      showToast('已同步 ✓');
+      _localVersion=Date.now();
+    })
     .catch(function(e){ setSyncUI('err','儲存失敗'); localSave(); showToast('本機儲存 ✓'); });
 }
 function localSave(){
@@ -494,7 +520,7 @@ var EDIT_PW = '18trip';
 var isEd = false;
 var CAT_COLOR = {'朝班':'#6292C1','昼班':'#fbd756','夕班':'#e48157','夜班':'#6b5a97','ペア':'#c8a870','HAMA':'#a0845c'};
 var CATS_LIST = ['朝班','昼班','夕班','夜班','ペア','HAMA'];
-var activeTag = null;
+var activeTags = [];
 
 var CAT_LL = {
   '兵庫':[34.69,135.19],'長野':[36.65,138.18],'福岡':[33.59,130.40],'島根':[35.47,132.90],
@@ -736,38 +762,36 @@ function rebuildTagBar(){
   if(!tags.length){bar.style.display='none';return;}
   bar.style.display='flex';
   document.getElementById('tag-chips').innerHTML=tags.map(function(t){
-    return '<button class="tag-filter'+(activeTag===t?' on':'')+'" onclick="toggleTagFilter(\''+t+'\')">'+t+'</button>';
+    return '<button class="tag-filter'+(activeTags.indexOf(t)>=0?' on':'')+'" onclick="toggleTagFilter(\''+t+'\')">'+t+'</button>';
   }).join('');
-  document.getElementById('tag-clear').style.display=activeTag?'':'none';
+  document.getElementById('tag-clear').style.display=activeTags.length?'':'none';
 }
 function toggleTagFilter(t){
-  activeTag=activeTag===t?null:t;
+  var idx=activeTags.indexOf(t);
+  if(idx>=0) activeTags.splice(idx,1);
+  else activeTags.push(t);
   rebuildTagBar();
-  if(curId){
-    // 詳情頁點 tag：直接在本頁亮起含該 tag 的景點
-    applyTagHighlight();
-  } else {
-    renderList();
-  }
+  if(curId){ applyTagHighlight(); }
+  else { renderList(); }
 }
-function clearTagFilter(){activeTag=null;rebuildTagBar();if(curId)applyTagHighlight();else renderList();}
+function clearTagFilter(){activeTags=[];rebuildTagBar();if(curId)applyTagHighlight();else renderList();}
 function applyTagHighlight(){
-  // In detail view: highlight/dim spots
   document.querySelectorAll('.sc').forEach(function(card){
-    if(!activeTag){card.classList.remove('tag-hi','tag-dim');return;}
+    if(!activeTags.length){card.classList.remove('tag-hi','tag-dim');return;}
     var iid=card.id.replace('sc-','');
     var e=fE(curId);if(!e)return;
     var res=fI(e,iid);
-    var hasTag=res&&(res.it.tags||[]).indexOf(activeTag)>=0;
-    card.classList.toggle('tag-hi',hasTag);
-    card.classList.toggle('tag-dim',!hasTag);
+    // 所有選取的 tag 都要符合
+    var hasAll=res&&activeTags.every(function(t){return(res.it.tags||[]).indexOf(t)>=0;});
+    card.classList.toggle('tag-hi',hasAll);
+    card.classList.toggle('tag-dim',!hasAll);
   });
 }
 
 // ── TAB ──
 var curTab='全部';
 function switchTab(t){
-  curTab=t;activeTag=null;
+  curTab=t;activeTags=[];
   document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.toggle('on',b.dataset.t===t);});
   if(t==='HAMA'){var h=db.find(function(d){return d.cat==='HAMA';});if(h){openDetail(h.id);return;}}
   backToList();
@@ -781,11 +805,13 @@ function saveCAT_LL(){try{localStorage.setItem(CAT_LL_KEY,JSON.stringify(CAT_LL)
 
 function vis(){
   var es=curTab==='全部'?db.slice():db.filter(function(d){return d.cat===curTab;});
-  // 問題5：若有 activeTag，只顯示含該 tag 的條目
-  if(activeTag){
+  // 複數 tag 篩選：條目內需含所有選取的 tag
+  if(activeTags.length){
     es=es.filter(function(e){
-      return e.sections.some(function(s){
-        return s.items.some(function(it){return(it.tags||[]).indexOf(activeTag)>=0;});
+      return activeTags.every(function(t){
+        return e.sections.some(function(s){
+          return s.items.some(function(it){return(it.tags||[]).indexOf(t)>=0;});
+        });
       });
     });
   }
@@ -811,7 +837,7 @@ function renderList(){
 var curId=null,curCat='全部',pendImg=null;
 function openDetail(id){
   curId=id;curCat='全部';
-  // activeTag 保留，進入詳情頁後自動亮起含該 tag 的景點
+  // activeTags 保留，進入詳情頁後自動亮起含該 tag 的景點
   document.getElementById('list-pg').style.display='none';
   document.getElementById('map-wrap').style.display='none';
   document.getElementById('dp').classList.add('show');
@@ -929,27 +955,74 @@ function delSpot(sid,iid){
   if(s){s.items=s.items.filter(function(x){return x.id!==iid;});save();renderDetail();}
 }
 
-// ── IMAGES ──
+// ── IMAGES (Firebase Storage) ──
 function trigImg(iid){if(!isEd)return;pendImg=iid;var fi=document.getElementById('fi');fi.value='';fi.click();}
 document.getElementById('fi').addEventListener('change',function(){
   var files=Array.from(this.files);if(!files.length||!pendImg||!curId)return;
   var savedIid=pendImg;var e=fE(curId);if(!e)return;
+  var SDK=window._fbSDK;
   var remaining=files.length;
   files.forEach(function(f){
-    if(f.size>8*1024*1024){alert(f.name+' 超過 8MB');remaining--;return;}
-    var r=new FileReader();
-    r.onload=function(ev){
-      var found=false;
-      for(var i=0;i<e.sections.length&&!found;i++)for(var j=0;j<e.sections[i].items.length&&!found;j++)
-        if(e.sections[i].items[j].id===savedIid){e.sections[i].items[j].images.push(ev.target.result);found=true;}
-      remaining--;if(remaining<=0){save();renderDetail();}
-    };
-    r.onerror=function(){remaining--;if(remaining<=0){save();renderDetail();}};
-    r.readAsDataURL(f);
+    if(f.size>8*1024*1024){alert(f.name+' 超過 8MB，請壓縮後再上傳');remaining--;if(remaining<=0){save();renderDetail();}return;}
+    if(SDK&&SDK.storage){
+      // 上傳到 Firebase Storage
+      var path='images/'+Date.now()+'_'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      var storageRef=SDK.sRef(SDK.storage,path);
+      showToast('上傳中…');
+      SDK.uploadBytes(storageRef,f).then(function(snapshot){
+        return SDK.getDownloadURL(snapshot.ref);
+      }).then(function(url){
+        var found=false;
+        for(var i=0;i<e.sections.length&&!found;i++)for(var j=0;j<e.sections[i].items.length&&!found;j++)
+          if(e.sections[i].items[j].id===savedIid){e.sections[i].items[j].images.push(url);found=true;}
+        remaining--;if(remaining<=0){save();renderDetail();}
+      }).catch(function(err){
+        alert('上傳失敗：'+err.message);
+        remaining--;if(remaining<=0){save();renderDetail();}
+      });
+    } else {
+      // fallback: base64
+      var r=new FileReader();
+      r.onload=function(ev){
+        var found=false;
+        for(var i=0;i<e.sections.length&&!found;i++)for(var j=0;j<e.sections[i].items.length&&!found;j++)
+          if(e.sections[i].items[j].id===savedIid){e.sections[i].items[j].images.push(ev.target.result);found=true;}
+        remaining--;if(remaining<=0){save();renderDetail();}
+      };
+      r.readAsDataURL(f);
+    }
   });this.value='';
 });
-function delImg(iid,idx){if(!isEd)return;var e=fE(curId),res=fI(e,iid);if(res){res.it.images.splice(idx,1);save();renderDetail();}}
-function viewImg(src){document.getElementById('iv-img').src=src;openOv('iv');}
+function delImg(iid,idx){
+  if(!isEd)return;
+  var e=fE(curId),res=fI(e,iid);
+  if(!res)return;
+  var url=res.it.images[idx];
+  res.it.images.splice(idx,1);
+  save();renderDetail();
+  // 若是 Storage URL 也從雲端刪除
+  var SDK=window._fbSDK;
+  if(url&&url.indexOf('firebasestorage')>=0&&SDK&&SDK.storage){
+    try{
+      // 從 URL 解析 path
+      var m=url.match(/o\/(images%2F[^?]+)/);
+      if(m){
+        var path=decodeURIComponent(m[1]);
+        SDK.deleteObject(SDK.sRef(SDK.storage,path)).catch(function(){});
+      }
+    }catch(ex){}
+  }
+}
+function viewImg(src){
+  var el=document.getElementById('iv-fullscreen');
+  document.getElementById('iv-img-full').src=src;
+  el.style.display='flex';
+}
+function closeImgFull(){
+  document.getElementById('iv-fullscreen').style.display='none';
+  document.getElementById('iv-img-full').src='';
+}
+document.getElementById('iv-fullscreen').addEventListener('click',function(e){if(e.target===this)closeImgFull();});
 
 // ── ENTRY MODAL ──
 var editId=null;
@@ -1008,8 +1081,10 @@ if(!loadFirebaseConfig()){
   setSyncUI('','本機');
   document.getElementById('setup-banner').classList.add('show');
   localSave();
+  hideLoading();
+  renderList();
 }
-renderList();
+// Firebase 有設定時，由 fbSDKReady → onValue 後才 renderList（已在上方）
 // 回頂部按鈕
 window.addEventListener('scroll',function(){
   var btn=document.getElementById('scroll-top-btn');
