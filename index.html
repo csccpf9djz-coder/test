@@ -743,8 +743,9 @@ function renderDetail(){
   var tabsH=uniq.map(function(t){return '<button class="ctab'+(curCat===t?' on':'')+'" onclick="setCat(\''+t+'\')">'+t+'</button>';}).join('');
   document.getElementById('back-btn').textContent=e.cat==='HAMA'?'← 返回全部':'← 返回列表';
   document.getElementById('di').innerHTML=
-    '<div class="dhero"><div class="dhero-bar" style="background:'+color+'"></div><div class="dhero-body"><div class="dcat">'+e.cat+'</div><div class="dname">'+e.location+'</div>'+(e.story?'<div class="dstory">📖 '+e.story+'</div>':'')+editBtn+'</div></div>'+
+    (e.cat==='HAMA'?'':'<div class="dhero"><div class="dhero-bar" style="background:'+color+'"></div><div class="dhero-body"><div class="dcat">'+e.cat+'</div><div class="dname">'+e.location+'</div>'+(e.story?'<div class="dstory">📖 '+e.story+'</div>':'')+editBtn+'</div></div>')+
     '<div class="dmap"><div id="detail-map"></div></div>'+
+    (e.cat==='HAMA'&&isEd?'<div style="margin-bottom:10px;display:flex;gap:6px"><button class="ico" onclick="openEditE(\''+e.id+'\')" style="padding:4px 10px">編輯資訊</button><button class="ico" onclick="openCatManage(\''+e.id+'\')" style="padding:4px 10px">管理分類</button></div>':'')+
     '<div class="ctabs">'+tabsH+'</div>'+secsH;
   rebuildTagBar();initDetailMap(e);
   if(activeTags.length)setTimeout(function(){applyTagHighlight();},30);
