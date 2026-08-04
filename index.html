@@ -31,7 +31,7 @@ window.dispatchEvent(new Event('fbSDKReady'));
   --line:#e0d8cc;--line2:#cec6b8;
   --tx:#241e16;--tx2:#685e50;--tx3:#a0907e;
   --ac:#5c7a6e;--red:#b04040;--gold:#a0845c;
-  --c朝班:#6292C1;--c昼班:#fbd756;--c夕班:#e48157;--c夜班:#6b5a97;--cペア:#c8a870;--cHAMA:#a0845c;
+  --c朝班:#6292C1;--c昼班:#fbd756;--c夕班:#e48157;--c夜班:#6b5a97;--cペア:#c8a870;--cHAMA:#c8fb46;
 }
 body{background:var(--bg);font-family:'Noto Sans TC',sans-serif;font-size:14px;color:var(--tx);min-height:100vh}
 button,input,textarea,select{font-family:'Noto Sans TC',sans-serif}
@@ -104,7 +104,7 @@ a:hover{text-decoration:underline}
 .dcat{font-size:10px;color:var(--tx3);font-family:'DM Mono',monospace;letter-spacing:.1em;margin-bottom:5px}
 .dname{font-family:'Shippori Mincho',serif;font-size:24px;font-weight:700;line-height:1.2}
 .dstory{font-size:13px;color:var(--tx2);margin-top:4px}
-.dmap{height:460px;border-radius:10px;overflow:hidden;border:0.5px solid var(--line);margin-bottom:14px;position:relative}
+.dmap{height:340px;border-radius:10px;overflow:hidden;border:0.5px solid var(--line);margin-bottom:14px;position:relative}
 #detail-map{height:100%;width:100%}
 .ctabs{display:flex;gap:5px;margin-bottom:14px;flex-wrap:wrap}
 .ctab{padding:5px 14px;border-radius:18px;font-size:12px;border:0.5px solid var(--line2);background:transparent;color:var(--tx3);cursor:pointer;transition:all .15s}
@@ -410,7 +410,7 @@ function loadFirebaseConfig(){ return null; } // config 已硬寫，不需要 lo
 // ══════ DATA ══════
 var EDIT_PW = '18trip';
 var isEd = false;
-var CAT_COLOR = {'朝班':'#6292C1','昼班':'#fbd756','夕班':'#e48157','夜班':'#6b5a97','ペア':'#c8a870','HAMA':'#a0845c'};
+var CAT_COLOR = {'朝班':'#6292C1','昼班':'#fbd756','夕班':'#e48157','夜班':'#6b5a97','ペア':'#c8a870','HAMA':'#c8fb46'};
 var CATS_LIST = ['朝班','昼班','夕班','夜班','ペア','HAMA'];
 var activeTags = [];
 var CAT_LL = {
