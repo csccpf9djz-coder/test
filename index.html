@@ -635,47 +635,107 @@ function handleUrlBlur(iid,sid){
   }
 }
 
-// ── TAG FILTER ──
+// ── TAG 搜尋跳轉 ──
+var _tagSearchTerm = null;   // 目前搜尋的 tag
+var _tagSearchIdx  = -1;     // 目前在第幾個結果
+
+function getEntriesWithTag(t){
+  return db.filter(function(e){
+    return e.sections.some(function(s){
+      return s.items.some(function(it){ return (it.tags||[]).indexOf(t)>=0; });
+    });
+  });
+}
+
+function toggleTagFilter(t){
+  if(_tagSearchTerm === t){
+    // 同一個 tag：跳到下一個
+    jumpToNextTagEntry();
+  } else {
+    // 新 tag：從第一個開始
+    _tagSearchTerm = t;
+    _tagSearchIdx  = -1;
+    jumpToNextTagEntry();
+  }
+  rebuildTagBar();
+}
+
+function jumpToNextTagEntry(){
+  var results = getEntriesWithTag(_tagSearchTerm);
+  if(!results.length){ showToast('找不到含「'+_tagSearchTerm+'」的頁面'); return; }
+  _tagSearchIdx = (_tagSearchIdx + 1) % results.length;
+  var target = results[_tagSearchIdx];
+  curTab = target.cat;
+  document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.toggle('on', b.dataset.t===curTab); });
+  activeTags = [_tagSearchTerm];
+  openDetail(target.id);
+  showToast('「'+_tagSearchTerm+'」 '+(_tagSearchIdx+1)+' / '+results.length);
+  // 跳完後滾動到第一個含該 tag 的景點卡片
+  setTimeout(function(){
+    var e = fE(target.id);
+    if(!e) return;
+    for(var i=0;i<e.sections.length;i++){
+      var s=e.sections[i];
+      for(var j=0;j<s.items.length;j++){
+        if((s.items[j].tags||[]).indexOf(_tagSearchTerm)>=0){
+          var card=document.getElementById('sc-'+s.items[j].id);
+          if(card){
+            card.scrollIntoView({behavior:'smooth',block:'center'});
+            // 短暫閃爍提示
+            card.style.transition='box-shadow .2s';
+            card.style.boxShadow='0 0 0 3px var(--ac)';
+            setTimeout(function(){ card.style.boxShadow=''; },1200);
+          }
+          return;
+        }
+      }
+    }
+  }, 120);
+}
+
+function clearTagFilter(){
+  _tagSearchTerm=null; _tagSearchIdx=-1; activeTags=[];
+  rebuildTagBar();
+  if(curId) applyTagHighlight(); else renderList();
+}
+
 function rebuildTagBar(){
   var tags=[];
   if(curId){
     var e=fE(curId);
-    if(e)e.sections.forEach(function(s){s.items.forEach(function(it){(it.tags||[]).forEach(function(t){if(t&&tags.indexOf(t)<0)tags.push(t);});});});
-  }else{
-    vis().forEach(function(e){e.sections.forEach(function(s){s.items.forEach(function(it){(it.tags||[]).forEach(function(t){if(t&&tags.indexOf(t)<0)tags.push(t);});});});});
+    if(e) e.sections.forEach(function(s){ s.items.forEach(function(it){ (it.tags||[]).forEach(function(t){ if(t&&tags.indexOf(t)<0) tags.push(t); }); }); });
+  } else {
+    vis().forEach(function(e){ e.sections.forEach(function(s){ s.items.forEach(function(it){ (it.tags||[]).forEach(function(t){ if(t&&tags.indexOf(t)<0) tags.push(t); }); }); }); });
   }
   tags.sort();
   var bar=document.getElementById('tag-bar');
-  if(!tags.length){bar.style.display='none';return;}
+  if(!tags.length){ bar.style.display='none'; return; }
   bar.style.display='flex';
+  var results = _tagSearchTerm ? getEntriesWithTag(_tagSearchTerm) : [];
   document.getElementById('tag-chips').innerHTML=tags.map(function(t){
-    return '<button class="tag-filter'+(activeTags.indexOf(t)>=0?' on':'')+'" onclick="toggleTagFilter(\''+t+'\')">'+t+'</button>';
+    var isActive = _tagSearchTerm===t;
+    var count    = isActive ? ' ('+(_tagSearchIdx+1)+'/'+results.length+')' : '';
+    return '<button class="tag-filter'+(isActive?' on':'')+'" onclick="toggleTagFilter(\''+t+'\')">'+t+count+'</button>';
   }).join('');
-  document.getElementById('tag-clear').style.display=activeTags.length?'':'none';
+  document.getElementById('tag-clear').style.display=_tagSearchTerm?'':'none';
 }
-function toggleTagFilter(t){
-  var idx=activeTags.indexOf(t);
-  if(idx>=0)activeTags.splice(idx,1);else activeTags.push(t);
-  rebuildTagBar();
-  if(curId)applyTagHighlight();else renderList();
-}
-function clearTagFilter(){activeTags=[];rebuildTagBar();if(curId)applyTagHighlight();else renderList();}
+
 function applyTagHighlight(){
   document.querySelectorAll('.sc').forEach(function(card){
-    if(!activeTags.length){card.classList.remove('tag-hi','tag-dim');return;}
+    if(!activeTags.length){ card.classList.remove('tag-hi','tag-dim'); return; }
     var iid=card.id.replace('sc-','');
-    var e=fE(curId);if(!e)return;
+    var e=fE(curId); if(!e) return;
     var res=fI(e,iid);
-    var hasAll=res&&activeTags.every(function(t){return(res.it.tags||[]).indexOf(t)>=0;});
-    card.classList.toggle('tag-hi',hasAll);
-    card.classList.toggle('tag-dim',!hasAll);
+    var hasAll=res&&activeTags.every(function(t){ return (res.it.tags||[]).indexOf(t)>=0; });
+    card.classList.toggle('tag-hi', hasAll);
+    card.classList.toggle('tag-dim', !hasAll);
   });
 }
 
 // ── TAB ──
 var curTab='全部';
 function switchTab(t){
-  curTab=t;activeTags=[];
+  curTab=t;activeTags=[];_tagSearchTerm=null;_tagSearchIdx=-1;
   document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.toggle('on',b.dataset.t===t);});
   if(t==='HAMA'){var h=db.find(function(d){return d.cat==='HAMA';});if(h){openDetail(h.id);return;}}
   backToList();
@@ -683,15 +743,7 @@ function switchTab(t){
 
 // ── LIST ──
 function vis(){
-  var es=curTab==='全部'?db.slice():db.filter(function(d){return d.cat===curTab;});
-  if(activeTags.length){
-    es=es.filter(function(e){
-      return activeTags.every(function(t){
-        return e.sections.some(function(s){return s.items.some(function(it){return(it.tags||[]).indexOf(t)>=0;});});
-      });
-    });
-  }
-  return es;
+  return curTab==='全部'?db.slice():db.filter(function(d){return d.cat===curTab;});
 }
 function renderList(){
   var es=vis();
